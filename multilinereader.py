@@ -19,10 +19,14 @@ import readline
 
 class MultiLineReader:
 
-    def __init__(self, continuation='\\'):
+    def __init__(self, continuation='\\', history_file=None):
         """continuation is the string which is used to denote that an input line is going to be
-        continued. It is typically \\, which is the default."""
+        continued. It is typically \\, which is the default. If the history file is not specified,
+        then multiline items in the history file will not be recalled correctly across process
+        boundaries."""
         self.continuation = continuation
+        if history_file:
+            self._fix_history(history_file)
 
     def input(self, prompt, continuation_prompt):
         """Get input from the user, similar to the Python input() function. The prompt is printed
@@ -66,9 +70,34 @@ class MultiLineReader:
                 lines.append(line[start:])
         return lines if start > 0 else None
 
+    def _fix_history(self, history_file):
+        try:
+            readline.read_history_file(history_file)
+        except FileNotFoundError:
+            return
+        # Rebuild history items, concatenating lines when indicated by continuation strings.
+        history = []
+        line = ''
+        for i in range(readline.get_current_history_length()):
+            line += readline.get_history_item(i + 1)  # 1-based
+            if line.endswith(self.continuation):
+                line += '\n'
+            else:
+                history.append(line)
+                line = ''
+        if len(line) > 0:
+            history.append(line)
+        # Replace readline's history
+        readline.clear_history()
+        for item in history:
+            readline.add_history(item)
+
 
 def main():
-    m = MultiLineReader()
+    history_file = '/tmp/history'
+    readline.read_history_file(history_file)
+    readline.parse_and_bind('set editing-mode emacs')
+    m = MultiLineReader(history_file=history_file)
     multilines = []
     try:
         while True:
@@ -82,6 +111,7 @@ def main():
     for i in range(readline.get_current_history_length()):
         item = readline.get_history_item(i + 1)  # 1-based
         print(item)
+    readline.write_history_file(history_file)
 
 
 if __name__ == '__main__':
